@@ -1,0 +1,129 @@
+# =============================================================================
+# MedPriority — .gitignore
+# =============================================================================
+# NEVER commit secrets, credentials, API keys, or private keys.
+# NEVER commit .env files.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# SECRETS — Critical: these must NEVER reach GitHub
+# -----------------------------------------------------------------------------
+.env
+*.env
+.env.*
+!.env.example
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+
+# Firebase — contains project credentials
+google-services.json
+GoogleService-Info.plist
+
+
+# -----------------------------------------------------------------------------
+# Python / FastAPI Backend
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# MyPy
+.mypy_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# ML models (can be large binary files)
+ml/models/*.pkl
+ml/models/*.joblib
+ml/data/*.csv
+
+
+# -----------------------------------------------------------------------------
+# Android / Kotlin
+# -----------------------------------------------------------------------------
+# Build outputs
+android-app/build/
+android-app/app/build/
+android-app/.gradle/
+android-app/local.properties
+
+# Gradle wrapper (optional — some teams commit this)
+!android-app/gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio project files
+*.iml
+.idea/
+*.ipr
+*.iws
+
+# Keystore files
+*.jks
+*.keystore
+
+# Generated files
+android-app/app/src/main/assets/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+# Do not ignore docker-compose.yml — that is committed
+# But ignore override files that may contain local secrets
+docker-compose.override.yml
+
+
+# -----------------------------------------------------------------------------
+# IDE — VS Code
+# -----------------------------------------------------------------------------
+.vscode/
+*.code-workspace
+
+
+# -----------------------------------------------------------------------------
+# OS
+# -----------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V5
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+
+# -----------------------------------------------------------------------------
+# Logs
+# -----------------------------------------------------------------------------
+*.log
+logs/
