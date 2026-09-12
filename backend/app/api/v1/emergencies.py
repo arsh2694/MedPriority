@@ -152,3 +152,28 @@ def end_emergency(
     """
     sess = emergency_service.end_emergency(db, session_id, current_user)
     return EmergencyEndedResponse(data=EmergencySessionResponse.model_validate(sess))
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/emergencies/{id}/location
+# ---------------------------------------------------------------------------
+from app.schemas.location import LocationCreate, LocationResponse
+
+@router.post(
+    "/{session_id}/location",
+    response_model=LocationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Record GPS location for an active emergency",
+)
+def record_emergency_location(
+    session_id: int,
+    data: LocationCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+):
+    """
+    Records a new GPS coordinate for this emergency.
+    - 404 if session not found.
+    - 403 if user doesn't own this emergency.
+    - 409 if emergency is not ACTIVE.
+    """
+    return emergency_service.record_location(db, session_id, current_user, data)

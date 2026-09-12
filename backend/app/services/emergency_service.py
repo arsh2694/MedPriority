@@ -307,3 +307,43 @@ def get_emergency_history(
             _expire_if_needed(sess, db)
 
     return sessions
+
+# ---------------------------------------------------------------------------
+# Location Integration
+# ---------------------------------------------------------------------------
+from app.models.location import LocationUpdate
+from app.schemas.location import LocationCreate
+
+def record_location(
+    db: Session, session_id: int, user: User, location_data: LocationCreate
+) -> LocationUpdate:
+    """
+    Records a GPS location for an ACTIVE emergency session.
+    """
+    session = get_emergency_by_id(db, session_id, user)
+    
+    if session.status != EmergencyStatus.ACTIVE:
+        import logging; logging.getLogger(__name__).warning(
+            f"LOCATION_REJECTED: User {user.id} tried to update location for "
+            f"session {session_id} in {session.status.name} state."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "SESSION_NOT_ACTIVE",
+                "message": "Cannot record location for an inactive emergency session."
+            }
+        )
+
+    # Valid, create location record
+    loc = LocationUpdate(
+        session_id=session.id,
+        latitude=location_data.latitude,
+        longitude=location_data.longitude,
+        accuracy=location_data.accuracy,
+        recorded_at=location_data.recorded_at
+    )
+    db.add(loc)
+    db.commit()
+    db.refresh(loc)
+    return loc

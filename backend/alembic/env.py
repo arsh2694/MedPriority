@@ -30,6 +30,7 @@ from app.database.base import Base
 from app.models import user              # noqa: F401
 from app.models import vehicle           # noqa: F401
 from app.models import emergency_session # noqa: F401
+from app.models import location          # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Alembic Config object — provides access to alembic.ini values

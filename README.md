@@ -189,3 +189,40 @@ An Emergency Session binds a **User** and a specific **Vehicle** they own into a
 MedPriority is an emergency **awareness and visibility** system.
 It is NOT a replacement for emergency services such as ambulances or police.
 Always contact official emergency services in a medical emergency.
+
+---
+
+## Architecture: Location Tracking (Day 7)
+
+Location tracking links the active `EmergencySession` with real-time GPS coordinates provided by the Android client.
+
+### Android Client
+- **Architecture**: Modern Android architecture using **Kotlin**, **Jetpack Compose**, and **Coroutines**.
+- **Networking**: `Retrofit2` with an `OkHttp` interceptor that automatically attaches the JWT to every request.
+- **Security**: The JWT is securely stored in Android's `EncryptedSharedPreferences` (AES256_GCM).
+- **Location**: Uses `FusedLocationProviderClient` to request high-accuracy foreground location updates every 5-10 seconds.
+- **Privacy**: The app explicitly requests foreground `ACCESS_FINE_LOCATION`. If denied, it does not crash but falls back to a standby state.
+
+### Backend Endpoint
+`POST /api/v1/emergencies/{id}/location`
+- Receives GPS coordinates.
+- Strictly validates that the JWT `user_id` matches the owner of the `EmergencySession`.
+- Validates the session is exactly in the `ACTIVE` state.
+- Records the data in the `location_updates` MySQL table securely.
+
+### Data Flow Diagram
+```text
+Android App 
+    |  Requests Foreground Location
+    v
+GPS Hardware
+    |  Returns (Lat, Lng)
+    v
+Retrofit Client (Attaches JWT)
+    |  POST /api/v1/emergencies/{id}/location
+    v
+FastAPI Backend
+    |  Verifies JWT, Ownership, & Session == ACTIVE
+    v
+MySQL Database (location_updates)
+```

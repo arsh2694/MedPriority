@@ -20,7 +20,7 @@ Security:
 
 import enum
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 
 from sqlalchemy import (
     DateTime, Enum as SAEnum, ForeignKey, Integer, String
@@ -32,6 +32,7 @@ from app.database.base import Base
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.vehicle import Vehicle
+    from app.models.location import LocationUpdate
 
 
 class EmergencyStatus(str, enum.Enum):
@@ -130,6 +131,12 @@ class EmergencySession(Base):
     vehicle: Mapped["Vehicle"] = relationship(
         "Vehicle",
         back_populates="emergency_sessions",
+    )
+
+    location_updates: Mapped[List["LocationUpdate"]] = relationship(
+        "LocationUpdate",
+        backref="emergency_session",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
