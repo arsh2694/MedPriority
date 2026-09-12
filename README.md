@@ -116,18 +116,42 @@ BASE_URL=http://10.0.2.2:8000/
 
 ## Project Status
 
-| Phase | Week | Status |
-|---|---|---|
-| Foundation | Week 1 | 🔄 In Progress |
-| Authentication | Week 2 | ⏳ Pending |
-| Vehicle + SOS | Week 3 | ⏳ Pending |
-| GPS + Location | Week 4 | ⏳ Pending |
-| Live Map | Week 5 | ⏳ Pending |
-| Notifications + Security | Week 6 | ⏳ Pending |
-| ML Anomaly Detection | Week 7 | ⏳ Pending |
-| DevSecOps | Week 8 | ⏳ Pending |
-| Integration Testing | Week 9 | ⏳ Pending |
-| Finalization | Week 10 | ⏳ Pending |
+| Phase | Week | Task / Milestone | Status |
+|---|---|---|---|
+| Foundation | **Week 1** | Project Setup & Git Foundation | 🟢 DONE |
+| | | FastAPI backend skeleton + health check | 🟢 DONE |
+| | | MySQL + SQLAlchemy ORM models | 🟢 DONE |
+| | | Authentication (JWT, bcrypt, RBAC) | 🟢 DONE |
+| | | Android skeleton + Navigation | 🟡 Next |
+| Authentication | Week 2 | | ⏳ Pending |
+| Vehicle + SOS | Week 3 | | ⏳ Pending |
+| GPS + Location | Week 4 | | ⏳ Pending |
+| Live Map | Week 5 | | ⏳ Pending |
+| Notifications + Security | Week 6 | | ⏳ Pending |
+| ML Anomaly Detection | Week 7 | | ⏳ Pending |
+| DevSecOps | Week 8 | | ⏳ Pending |
+| Integration Testing | Week 9 | | ⏳ Pending |
+| Finalization | Week 10 | | ⏳ Pending |
+
+---
+
+## Architecture: Authentication (Day 4)
+
+MedPriority uses stateless **JWT (JSON Web Token)** authentication.
+
+### How it works:
+1. Client sends `POST /api/v1/auth/login` with `username` (email) and `password`.
+2. Backend verifies the password against the bcrypt hash in MySQL.
+3. Backend generates a JWT containing the user ID (`sub`) and returns it.
+4. Client attaches `Authorization: Bearer <token>` to future requests.
+5. Protected endpoints (like `/api/v1/auth/me`) decode the token to identify the user.
+
+### RBAC (Role-Based Access Control)
+Users have roles (`USER` or `ADMIN`). You can restrict endpoints using FastAPI dependencies:
+- `Depends(get_current_active_user)` — Any logged-in user.
+- `Depends(get_current_admin_user)` — Admin only (e.g. `/api/v1/auth/admin-test`).
+
+> **Security Rule:** The database stores `password_hash`. The plain password is never saved. Furthermore, the `password_hash` is **never** included in API responses.
 
 ---
 

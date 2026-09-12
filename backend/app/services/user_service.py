@@ -14,31 +14,28 @@ Architecture rule: No database queries in routers. Routers call services.
 
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
-from passlib.context import CryptContext
 
 from app.models.user import User
 from app.schemas.user import UserCreate
+from app.core.security import get_password_hash, verify_password
 
 
 # -----------------------------------------------------------------------------
-# Password hashing context
-# Using bcrypt with a cost factor appropriate for development.
-# Full authentication system (login, JWT) is built in Week 2.
+# User Authentication & CRUD operations
 # -----------------------------------------------------------------------------
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-
-def hash_password(plain_password: str) -> str:
+def authenticate_user(db: Session, email: str, password: str) -> User | None:
     """
-    Hashes a plaintext password using bcrypt.
-    The result is stored in the database — the plaintext is never stored.
+    Verifies a user's email and password.
+    Returns the User object if successful, None otherwise.
     """
-    return pwd_context.hash(plain_password)
+    user = get_user_by_email(db, email)
+    if not user:
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    return user
 
-
-# -----------------------------------------------------------------------------
-# User CRUD operations
-# -----------------------------------------------------------------------------
 
 def create_user(db: Session, user_data: UserCreate) -> User:
     """
@@ -48,19 +45,8 @@ def create_user(db: Session, user_data: UserCreate) -> User:
       1. Check if email already exists (return 409 if duplicate).
       2. Hash the password.
       3. Create and commit the User record.
-
-    Args:
-        db:        Active database session.
-        user_data: Validated UserCreate schema from the request.
-
-    Returns:
-        The newly created User ORM object.
-
-    Raises:
-        HTTPException 409: If email is already registered.
     """
-    # Check for duplicate email
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    existing_user = get_user_by_email(db, user_data.email)
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -72,36 +58,24 @@ def create_user(db: Session, user_data: UserCreate) -> User:
         )
 
     # Hash the password before storing
-    hashed = hash_password(user_data.password)
+    hashed = get_password_hash(user_data.password)
 
-    # Create the User record
     new_user = User(
         name=user_data.name,
         email=user_data.email,
         password_hash=hashed,
-        # role and is_active use their model defaults (USER, True)
     )
 
     db.add(new_user)
     db.commit()
-    db.refresh(new_user)   # reload from DB to get generated id, created_at etc.
+    db.refresh(new_user)
 
     return new_user
 
 
 def get_user_by_id(db: Session, user_id: int) -> User:
     """
-    Fetches a user by their integer ID.
-
-    Args:
-        db:      Active database session.
-        user_id: The user's primary key.
-
-    Returns:
-        User ORM object.
-
-    Raises:
-        HTTPException 404: If no user with that ID exists.
+    Fetches a user by their integer ID. Returns 404 if not found.
     """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -119,6 +93,5 @@ def get_user_by_id(db: Session, user_id: int) -> User:
 def get_user_by_email(db: Session, email: str) -> User | None:
     """
     Fetches a user by email. Returns None if not found.
-    Used internally (e.g. login check in Week 2).
     """
     return db.query(User).filter(User.email == email).first()
