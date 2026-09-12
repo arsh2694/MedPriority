@@ -45,9 +45,13 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # JWT Authentication (used from Week 2)
     # -------------------------------------------------------------------------
-    JWT_SECRET_KEY: str = "change-this-secret-in-production"
+    JWT_SECRET_KEY: str = "supersecretkey_change_in_production"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # Emergency SOS settings
+    EMERGENCY_SESSION_EXPIRY_MINUTES: int = 120  # Auto-expire active SOS after 2 hours
+
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # -------------------------------------------------------------------------

@@ -27,15 +27,19 @@ from app.core.config import settings
 
 # Import Base and ALL models so Alembic knows about them for autogenerate
 from app.database.base import Base
-from app.models import user  # noqa: F401 — must import to register with Base
+from app.models import user              # noqa: F401
+from app.models import vehicle           # noqa: F401
+from app.models import emergency_session # noqa: F401
 
 # ---------------------------------------------------------------------------
 # Alembic Config object — provides access to alembic.ini values
 # ---------------------------------------------------------------------------
 config = context.config
 
-# Set the database URL from our .env settings (overrides alembic.ini)
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Set the database URL from our .env settings# configparser gets confused by '%' in passwords (like URL-encoded %40)
+# so we replace '%' with '%%' to escape it for Alembic config interpolation
+db_url = settings.database_url.replace("%", "%%")
+config.set_main_option("sqlalchemy.url", db_url)
 
 # Set up Python logging from alembic.ini
 if config.config_file_name is not None:

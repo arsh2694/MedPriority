@@ -11,11 +11,16 @@ Important security rules:
 
 import enum
 from datetime import datetime
+from typing import TYPE_CHECKING, List
 
 from sqlalchemy import String, Boolean, DateTime, Enum as SAEnum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+
+if TYPE_CHECKING:
+    from app.models.vehicle import Vehicle
+    from app.models.emergency_session import EmergencySession
 
 
 class UserRole(str, enum.Enum):
@@ -92,6 +97,22 @@ class User(Base):
         default=datetime.utcnow,
         nullable=False,
         comment="Account creation timestamp (UTC)",
+    )
+
+    # -------------------------------------------------------------------------
+    # Relationships
+    # -------------------------------------------------------------------------
+    # back_populates connects to Vehicle.owner — SQLAlchemy manages the join
+    vehicles: Mapped[List["Vehicle"]] = relationship(
+        "Vehicle",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+    )
+
+    emergency_sessions: Mapped[List["EmergencySession"]] = relationship(
+        "EmergencySession",
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

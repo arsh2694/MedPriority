@@ -155,6 +155,35 @@ Users have roles (`USER` or `ADMIN`). You can restrict endpoints using FastAPI d
 
 ---
 
+## Architecture: Vehicle Management (Day 5)
+
+Vehicles are explicitly linked to authenticated users.
+- A user can register multiple vehicles (One-to-Many).
+- Vehicle ownership checks are strictly enforced server-side.
+- `user_id` is always derived from the authenticated JWT (Server-side identity binding) — users cannot spoof vehicle creation for other users.
+- Unique `vehicle_number` validation.
+
+---
+
+## Architecture: Emergency SOS Sessions (Day 6)
+
+The core mechanism representing an active emergency.
+An Emergency Session binds a **User** and a specific **Vehicle** they own into an active distress state.
+
+### Lifecycle
+- **ACTIVE**: The SOS is currently live.
+- **ENDED**: The user manually turned off the SOS.
+- **EXPIRED**: The system automatically closed the SOS because the 2-hour timeout was reached.
+
+### Security & Rules
+- Users can only start an SOS for a vehicle they own.
+- Users cannot have multiple overlapping ACTIVE emergencies.
+- Endpoints enforce RBAC (Users manage their own emergencies, Admins can view all history).
+- Session expiration is checked dynamically (on-query) to guarantee expired sessions act identically to ended sessions without relying on a background worker.
+- The schema forbids users from sending timestamps or setting the `status` field explicitly — these are strictly server-controlled.
+
+---
+
 ## Important Notice
 
 MedPriority is an emergency **awareness and visibility** system.
