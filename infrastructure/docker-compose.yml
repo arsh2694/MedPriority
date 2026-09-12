@@ -1,0 +1,38 @@
+# =============================================================================
+# MedPriority — Docker Compose (Local Development)
+# =============================================================================
+# Starts MySQL 8.0 for local development.
+#
+# Usage:
+#   docker compose up -d          Start MySQL in background
+#   docker compose down           Stop and remove containers
+#   docker compose down -v        Stop and delete database volume too
+#
+# MySQL will be accessible at localhost:3306
+# =============================================================================
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: medpriority_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: medpriority
+      MYSQL_USER: medpriority_user
+      MYSQL_PASSWORD: MedPriority@2024
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init:/docker-entrypoint-initdb.d   # optional: place .sql seed files here
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data:
+    driver: local

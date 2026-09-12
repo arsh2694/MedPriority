@@ -10,10 +10,11 @@ uvicorn[standard]==0.29.0
 pydantic-settings==2.2.1
 
 # Database ORM and MySQL driver (Day 3)
-sqlalchemy==2.0.30
-alembic==1.13.1
+sqlalchemy>=2.0.52
+alembic>=1.13.1
 pymysql==1.1.0
 cryptography==42.0.5
+bcrypt==4.0.1
 
 # Authentication (Day 2 — Week 2)
 python-jose[cryptography]==3.3.0

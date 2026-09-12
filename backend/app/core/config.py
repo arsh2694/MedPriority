@@ -86,10 +86,13 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         """
         Constructs the SQLAlchemy database connection URL from individual parts.
+        Passwords are URL-encoded so special characters like @ do not break the URL.
         Used by Day 3 database session setup.
         """
+        from urllib.parse import quote_plus
+        encoded_password = quote_plus(self.DB_PASSWORD)
         return (
-            f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}"
+            f"mysql+pymysql://{self.DB_USER}:{encoded_password}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
         )
 

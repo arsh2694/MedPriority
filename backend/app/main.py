@@ -4,12 +4,12 @@ MedPriority — FastAPI Application Entry Point
 This is the main file that creates and configures the FastAPI application.
 Uvicorn loads this file when you run: uvicorn app.main:app --reload
 
-Current endpoints (Day 2):
+Endpoints registered here (Day 2 + Day 3):
     GET /           → Confirms the API is running
-    GET /health     → Health check (will include DB check from Day 3)
+    GET /health     → Health check including live database status
+    /api/v1/...     → All versioned API routes
 
 Future middleware added here (later weeks):
-    - CORS
     - Rate limiting
     - JWT authentication
     - Audit logging
@@ -20,6 +20,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.api.v1.router import api_router
+from app.database.connection import check_database_connection
 
 
 # -----------------------------------------------------------------------------
@@ -32,7 +34,6 @@ app = FastAPI(
         "MedPriority: A Secure Real-Time Emergency Visibility and Assistance "
         "System for Private Medical Transport Vehicles"
     ),
-    # Disable auto-generated docs in production
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
 )
@@ -40,8 +41,6 @@ app = FastAPI(
 
 # -----------------------------------------------------------------------------
 # CORS Middleware
-# Allows the Android app (and any web client) to make requests to this API.
-# In production, restrict origins to your actual domain.
 # -----------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
@@ -53,16 +52,17 @@ app.add_middleware(
 
 
 # -----------------------------------------------------------------------------
-# Routes — Day 2
-# More routes will be added as separate router modules from Week 2 onwards.
+# Mount versioned API router at /api/v1
 # -----------------------------------------------------------------------------
+app.include_router(api_router, prefix="/api/v1")
 
+
+# -----------------------------------------------------------------------------
+# Root endpoint
+# -----------------------------------------------------------------------------
 @app.get("/", tags=["Root"])
 async def root():
-    """
-    Root endpoint.
-    Confirms the MedPriority API is running.
-    """
+    """Confirms the MedPriority API is running."""
     return {
         "status": "success",
         "message": "MedPriority API Running",
@@ -71,21 +71,22 @@ async def root():
     }
 
 
+# -----------------------------------------------------------------------------
+# Health check — now includes live database connectivity check
+# -----------------------------------------------------------------------------
 @app.get("/health", tags=["Health"])
 async def health_check():
     """
     Health check endpoint.
-    Used by the Android app (Day 5) to verify backend connectivity.
-    Will include database connectivity check from Day 3.
-
-    Returns:
-        status: "ok" if everything is healthy
-        api: always "ok" if this endpoint responds
-        database: "not_configured" until Day 3
+    Used by the Android app to verify backend connectivity.
+    Performs a live database connection test on every call.
     """
+    db_status = "connected" if check_database_connection() else "unreachable"
+    overall_status = "ok" if db_status == "connected" else "degraded"
+
     return {
-        "status": "ok",
+        "status": overall_status,
         "api": "ok",
-        "database": "not_configured",   # will change to "connected" on Day 3
+        "database": db_status,
         "version": settings.APP_VERSION,
     }
