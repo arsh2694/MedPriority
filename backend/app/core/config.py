@@ -36,9 +36,9 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # MySQL Database (used from Day 3)
     # -------------------------------------------------------------------------
-    DB_HOST: str = "localhost"
+    DB_HOST: str = "127.0.0.1"
     DB_PORT: int = 3306
-    DB_NAME: str = "medpriority_db"
+    DB_NAME: str = "medpriority"
     DB_USER: str = "medpriority_user"
     DB_PASSWORD: str = ""
 

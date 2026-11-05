@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MedPriority — Dispatcher & Admin Operations Center</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet CSS & JS for Interactive Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    @keyframes pulse-radar {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      50% { transform: scale(1.4); opacity: 0.3; }
+      100% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .radar-ping {
+      animation: pulse-radar 2s infinite ease-in-out;
+    }
+    #map { height: 100%; min-height: 480px; width: 100%; border-radius: 1rem; }
+    .custom-sos-container {
+      background: transparent !important;
+      border: none !important;
+    }
+    .custom-sos-marker {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .radar-pulse-ring {
+      position: absolute;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: rgba(239, 68, 68, 0.4);
+      border: 2px solid #ef4444;
+      animation: pulse-ring 1.8s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+      pointer-events: none;
+    }
+    @keyframes pulse-ring {
+      0% { transform: scale(0.6); opacity: 1; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .beacon-core {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      background: #ef4444;
+      border: 2.5px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 4px 14px rgba(239, 68, 68, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      z-index: 10;
+    }
+    .vehicle-tag {
+      position: absolute;
+      top: 38px;
+      white-space: nowrap;
+      background: rgba(17, 24, 39, 0.92);
+      color: #ffffff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+      z-index: 11;
+      pointer-events: none;
+    }
+    .toast-anim {
+      animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes slideIn {
+      from { transform: translateY(100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body class="bg-[#F5F5F7] text-[#1D1D1F] font-sans min-h-screen flex flex-col">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-600 font-bold text-xl shadow-sm">
+          🚑
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-lg text-gray-900 tracking-tight">MedPriority</span>
+            <span class="text-xs bg-red-100 text-red-700 font-semibold px-2 py-0.5 rounded-full border border-red-200">
+              OPERATIONS CENTER
+            </span>
+          </div>
+          <p class="text-xs text-gray-500">Unified Dispatch, Fleet & User Governance Console</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3 sm:space-x-4">
+        <!-- Live Polling Indicator -->
+        <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span id="sync-status">Live (3s sync)</span>
+        </div>
+
+        <!-- Audio Alert Toggle -->
+        <button id="audio-toggle-btn" onclick="toggleAudio()" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 hover:bg-gray-50 flex items-center space-x-1 text-gray-600">
+          <span id="audio-icon">🔔</span>
+          <span id="audio-label" class="hidden sm:inline">Alerts On</span>
+        </button>
+
+        <!-- Admin Profile & Logout -->
+        <div class="flex items-center space-x-3 pl-3 border-l border-gray-200">
+          <div class="text-right hidden sm:block">
+            <div id="admin-name" class="text-xs font-semibold text-gray-900">Dispatcher</div>
+            <div id="admin-email" class="text-[11px] text-gray-500">admin@medpriority.com</div>
+          </div>
+          <button onclick="handleLogout()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-medium transition">
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Navigation Tabs -->
+  <div class="bg-white border-b border-gray-200 sticky top-16 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 sm:space-x-4 overflow-x-auto py-2">
+      <button onclick="setMainView('dispatch')" id="nav-btn-dispatch"
+              class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 bg-blue-50 text-blue-600 transition">
+        <span>🗺️ Live Dispatch</span>
+        <span id="badge-active-sos" class="bg-red-500 text-white text-[11px] font-bold px-1.5 py-0.2 rounded-full hidden">0</span>
+      </button>
+
+      <button onclick="setMainView('users')" id="nav-btn-users"
+              class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition">
+        <span>👥 User Management</span>
+        <span id="badge-total-users" class="bg-gray-200 text-gray-700 text-[11px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+      </button>
+
+      <button onclick="setMainView('vehicles')" id="nav-btn-vehicles"
+              class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition">
+        <span>🚗 Fleet & Vehicles</span>
+        <span id="badge-total-vehicles" class="bg-gray-200 text-gray-700 text-[11px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+      </button>
+
+      <button onclick="setMainView('history')" id="nav-btn-history"
+              class="px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition">
+        <span>📜 Emergency History</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Toast Notification Hub -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full flex flex-col gap-6">
+
+    <!-- KPI Metrics Cards (Visible across all tabs) -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="bg-white rounded-2xl p-4 sm:p-5 border border-gray-200/80 shadow-sm relative overflow-hidden">
+        <div class="text-xs font-semibold uppercase tracking-wider text-red-600 mb-1 flex items-center justify-between">
+          <span>Active Emergencies</span>
+          <span class="relative flex h-2.5 w-2.5">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+          </span>
+        </div>
+        <div id="stat-active" class="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">0</div>
+        <div class="text-[11px] text-gray-500 mt-1">Live SOS telemetry broadcasts</div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 sm:p-5 border border-gray-200/80 shadow-sm">
+        <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Total Users</div>
+        <div id="stat-total-users" class="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">0</div>
+        <div class="text-[11px] text-gray-500 mt-1">Registered drivers & admins</div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 sm:p-5 border border-gray-200/80 shadow-sm">
+        <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">Fleet Vehicles</div>
+        <div id="stat-total-vehicles" class="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">0</div>
+        <div class="text-[11px] text-gray-500 mt-1">Emergency & transport units</div>
+      </div>
+
+      <div class="bg-white rounded-2xl p-4 sm:p-5 border border-gray-200/80 shadow-sm">
+        <div class="text-xs font-semibold uppercase tracking-wider text-amber-600 mb-1">Unverified Vehicles</div>
+        <div id="stat-unverified" class="text-2xl sm:text-3xl font-extrabold text-amber-600 tracking-tight">0</div>
+        <div class="text-[11px] text-gray-500 mt-1">Require admin verification</div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW 1: LIVE DISPATCH & MAP -->
+    <!-- ===================================================================== -->
+    <div id="view-dispatch" class="flex-1 flex flex-col gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+        <!-- Tactical Leaflet Map (7 cols) -->
+        <section class="lg:col-span-7 bg-white rounded-2xl p-4 border border-gray-200/80 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
+            <div class="flex items-center space-x-2">
+              <span class="text-base font-bold text-gray-900">Live GPS Tactical Map</span>
+              <span id="map-active-count" class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">0 Active</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button onclick="centerMapOnActive()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-lg font-medium transition">
+                Fit All Units
+              </button>
+              <button onclick="manualRefresh()" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-2.5 py-1 rounded-lg font-medium transition">
+                ↻ Refresh
+              </button>
+            </div>
+          </div>
+
+          <div class="relative flex-1 rounded-xl overflow-hidden min-h-[460px]">
+            <div id="map"></div>
+            <div id="no-active-banner" class="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-md px-4 py-2.5 rounded-xl border border-gray-200 text-xs text-gray-600 shadow-md flex items-center justify-between z-[1000]">
+              <span>🛡️ All units clear. Waiting for live SOS distress beacons.</span>
+              <span class="font-mono text-[10px] text-gray-400">Map Standby</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Live Beacons Stream Cards (5 cols) -->
+        <section class="lg:col-span-5 bg-white rounded-2xl border border-gray-200/80 shadow-sm flex flex-col overflow-hidden">
+          <div class="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+            <div>
+              <h3 class="font-bold text-sm text-gray-900">Live SOS Distress Beacons</h3>
+              <p class="text-xs text-gray-500">Auto-refreshes every 3 seconds</p>
+            </div>
+            <button onclick="openTestSosModal()" class="text-xs bg-red-50 hover:bg-red-100 text-red-700 font-semibold px-3 py-1.5 rounded-xl border border-red-200 transition">
+              + Simulate SOS
+            </button>
+          </div>
+
+          <div id="live-sessions-container" class="p-4 flex-1 overflow-y-auto space-y-3 max-h-[580px]">
+            <!-- Rendered dynamically -->
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW 2: USER MANAGEMENT -->
+    <!-- ===================================================================== -->
+    <div id="view-users" class="hidden flex-1 flex flex-col gap-4">
+      <div class="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-5">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">User Management</h2>
+            <p class="text-xs text-gray-500">Manage citizen drivers, responders, and dispatch administrators</p>
+          </div>
+          <div class="flex items-center space-x-3 w-full sm:w-auto">
+            <input type="text" id="users-search-input" oninput="filterUsersTable()" placeholder="Search name or email..."
+                   class="px-3 py-2 text-xs rounded-xl border border-gray-300 w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="openAddUserModal()" class="px-3.5 py-2 bg-[#007AFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold transition whitespace-nowrap shadow-sm">
+              + Add User
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-gray-400 font-semibold uppercase tracking-wider border-b border-gray-100">
+                <th class="py-3 px-3">User</th>
+                <th class="py-3 px-3">Role</th>
+                <th class="py-3 px-3">Status</th>
+                <th class="py-3 px-3">Vehicles</th>
+                <th class="py-3 px-3">Created</th>
+                <th class="py-3 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="users-table-body" class="divide-y divide-gray-100">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW 3: FLEET & VEHICLE MANAGEMENT -->
+    <!-- ===================================================================== -->
+    <div id="view-vehicles" class="hidden flex-1 flex flex-col gap-4">
+      <div class="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-5">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-100">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Fleet & Vehicle Management</h2>
+            <p class="text-xs text-gray-500">Manage citizen transport units, ambulances, and verification credentials</p>
+          </div>
+          <div class="flex items-center space-x-3 w-full sm:w-auto">
+            <input type="text" id="vehicles-search-input" oninput="filterVehiclesTable()" placeholder="Search number, owner..."
+                   class="px-3 py-2 text-xs rounded-xl border border-gray-300 w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="openAddVehicleModal()" class="px-3.5 py-2 bg-[#007AFF] hover:bg-blue-600 text-white rounded-xl text-xs font-semibold transition whitespace-nowrap shadow-sm">
+              + Register Vehicle
+            </button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-gray-400 font-semibold uppercase tracking-wider border-b border-gray-100">
+                <th class="py-3 px-3">Vehicle</th>
+                <th class="py-3 px-3">Owner Details</th>
+                <th class="py-3 px-3">Type & Color</th>
+                <th class="py-3 px-3">Verification</th>
+                <th class="py-3 px-3">Registered</th>
+                <th class="py-3 px-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="vehicles-table-body" class="divide-y divide-gray-100">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW 4: EMERGENCY HISTORY LOG -->
+    <!-- ===================================================================== -->
+    <div id="view-history" class="hidden flex-1 flex flex-col gap-4">
+      <div class="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-5">
+        <div class="flex items-center justify-between pb-4 border-b border-gray-100">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Emergency History Audit Log</h2>
+            <p class="text-xs text-gray-500">Complete historical record of emergency sessions, durations, and resolution logs</p>
+          </div>
+          <button onclick="loadAdminHistory()" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-xl font-medium transition">
+            ↻ Refresh Log
+          </button>
+        </div>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="w-full text-left text-xs">
+            <thead>
+              <tr class="text-gray-400 font-semibold uppercase tracking-wider border-b border-gray-100">
+                <th class="py-3 px-3">Session</th>
+                <th class="py-3 px-3">Vehicle & User</th>
+                <th class="py-3 px-3">Status</th>
+                <th class="py-3 px-3">Started At</th>
+                <th class="py-3 px-3">Ended At</th>
+                <th class="py-3 px-3">Resolved By</th>
+                <th class="py-3 px-3">GPS Points</th>
+                <th class="py-3 px-3">Dispatcher Notes</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body" class="divide-y divide-gray-100">
+              <!-- Rendered dynamically -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ===================================================================== -->
+  <!-- MODALS -->
+  <!-- ===================================================================== -->
+
+  <!-- Modal: Sign In / Auth -->
+  <div id="login-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-gray-100">
+      <div class="text-center mb-6">
+        <div class="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 text-3xl mx-auto flex items-center justify-center mb-3">
+          🚑
+        </div>
+        <h2 class="text-2xl font-bold text-gray-900 tracking-tight">Dispatcher Sign In</h2>
+        <p class="text-xs text-gray-500 mt-1">Authenticate with admin credentials to access the Operations Center</p>
+      </div>
+
+      <div id="login-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-xs rounded-xl font-medium"></div>
+
+      <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Admin Email</label>
+          <input type="email" id="login-email" value="admin@medpriority.com" required
+                 class="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Password</label>
+          <input type="password" id="login-password" value="Admin@123" required
+                 class="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <button type="submit" id="login-submit-btn" class="w-full py-3 bg-[#007AFF] hover:bg-blue-600 text-white font-semibold rounded-xl text-sm transition shadow-sm">
+          Sign In
+        </button>
+
+        <div class="text-center pt-2">
+          <p class="text-[11px] text-gray-400">Available: admin@medpriority.com / Admin@123</p>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Add New User -->
+  <div id="add-user-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-100">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900">Add New User</h3>
+        <button onclick="closeAddUserModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+      </div>
+      <form onsubmit="submitAddUser(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Full Name</label>
+          <input type="text" id="new-user-name" required placeholder="e.g. John Doe"
+                 class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Email Address</label>
+          <input type="email" id="new-user-email" required placeholder="e.g. john@example.com"
+                 class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Password</label>
+          <input type="password" id="new-user-password" required minlength="8" placeholder="Min 8 characters"
+                 class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Account Role</label>
+          <select id="new-user-role" class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="USER">Citizen User (Standard)</option>
+            <option value="ADMIN">Administrator / Dispatcher</option>
+          </select>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeAddUserModal()" class="px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button type="submit" id="add-user-btn" class="px-4 py-2 text-xs bg-[#007AFF] text-white font-semibold rounded-xl hover:bg-blue-600">Create User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Register Vehicle -->
+  <div id="add-vehicle-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-100">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-bold text-gray-900">Register Fleet Vehicle</h3>
+        <button onclick="closeAddVehicleModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+      </div>
+      <form onsubmit="submitAddVehicle(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Assign to Owner</label>
+          <select id="new-veh-user-id" required class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="">Select a user...</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Vehicle Registration Number</label>
+          <input type="text" id="new-veh-number" required placeholder="e.g. DL01AB1234"
+                 class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs uppercase font-mono focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Owner Name</label>
+          <input type="text" id="new-veh-owner" required placeholder="Owner name as per RC"
+                 class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">Vehicle Type</label>
+            <select id="new-veh-type" class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="CAR">Car</option>
+              <option value="BIKE">Bike</option>
+              <option value="SUV">SUV</option>
+              <option value="VAN">Van / Ambulance</option>
+              <option value="TRUCK">Truck</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-700 mb-1">Color</label>
+            <input type="text" id="new-veh-color" required placeholder="e.g. White"
+                   class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+        </div>
+        <div class="flex items-center space-x-2 pt-1">
+          <input type="checkbox" id="new-veh-verified" checked class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <label for="new-veh-verified" class="text-xs text-gray-700">Pre-verify this vehicle</label>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeAddVehicleModal()" class="px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button type="submit" id="add-veh-btn" class="px-4 py-2 text-xs bg-[#007AFF] text-white font-semibold rounded-xl hover:bg-blue-600">Register</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: End SOS with Resolution Notes -->
+  <div id="end-sos-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-100">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-bold text-gray-900">Resolve & End SOS Session</h3>
+        <button onclick="closeEndSosModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+      </div>
+      <p id="end-sos-desc" class="text-xs text-gray-500 mb-4">Are you sure you want to end this active emergency?</p>
+      <form onsubmit="submitEndSos(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Dispatcher Resolution Notes (Optional)</label>
+          <textarea id="end-sos-notes" rows="3" placeholder="e.g. Ambulance arrived at scene. Patient safely transported to City Hospital."
+                    class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"></textarea>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeEndSosModal()" class="px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button type="submit" id="end-sos-btn" class="px-4 py-2 text-xs bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700">Confirm & End Session</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Simulate/Start SOS for Testing -->
+  <div id="test-sos-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-100">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="text-lg font-bold text-gray-900">Simulate SOS Emergency</h3>
+        <button onclick="closeTestSosModal()" class="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+      </div>
+      <p class="text-xs text-gray-500 mb-4">Select any vehicle to start an emergency distress broadcast directly from the console.</p>
+      <form onsubmit="submitTestSos(event)" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-700 mb-1">Select Fleet Vehicle</label>
+          <select id="test-sos-vehicle-id" required class="w-full px-3.5 py-2 rounded-xl border border-gray-300 text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            <option value="">Select a vehicle...</option>
+          </select>
+        </div>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeTestSosModal()" class="px-4 py-2 text-xs text-gray-600 hover:bg-gray-100 rounded-xl">Cancel</button>
+          <button type="submit" id="test-sos-btn" class="px-4 py-2 text-xs bg-red-600 text-white font-semibold rounded-xl hover:bg-red-700">Trigger SOS</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Audio element for SOS alerts -->
+  <audio id="sos-audio" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- ===================================================================== -->
+  <!-- JAVASCRIPT CONTROLLER -->
+  <!-- ===================================================================== -->
+  <script>
+    // State
+    let authToken = localStorage.getItem('medpriority_admin_token') || '';
+    let currentAdminUser = null;
+    let currentMainView = 'dispatch';
+    let audioEnabled = true;
+
+    // Cache
+    let activeSessionsCache = [];
+    let usersCache = [];
+    let vehiclesCache = [];
+    let historyCache = [];
+    let knownActiveSessionIds = new Set();
+    let endingSessionId = null;
+
+    // Map & Markers
+    let map = null;
+    let markers = {};
+    let polylines = {};
+
+    // Polling Interval
+    let pollInterval = null;
+
+    // Auth Header Helper
+    function getAuthHeaders() {
+      return {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      };
+    }
+
+    // Toast Notifications
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const bg = type === 'success' ? 'bg-gray-900 text-white' : 'bg-red-600 text-white';
+      toast.className = `${bg} px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold flex items-center space-x-2 toast-anim pointer-events-auto`;
+      toast.innerHTML = `<span>${type === 'success' ? '✓' : '⚠'}</span><span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    // View Navigation
+    function setMainView(view) {
+      currentMainView = view;
+      ['dispatch', 'users', 'vehicles', 'history'].forEach(v => {
+        const btn = document.getElementById(`nav-btn-${v}`);
+        const viewEl = document.getElementById(`view-${v}`);
+        if (v === view) {
+          btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 bg-blue-50 text-blue-600 transition shadow-sm';
+          viewEl.classList.remove('hidden');
+        } else {
+          btn.className = 'px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition';
+          viewEl.classList.add('hidden');
+        }
+      });
+
+      if (view === 'dispatch') {
+        setTimeout(() => { if (map) map.invalidateSize(); }, 200);
+      } else if (view === 'users') {
+        loadAdminUsers();
+      } else if (view === 'vehicles') {
+        loadAdminVehicles();
+      } else if (view === 'history') {
+        loadAdminHistory();
+      }
+    }
+
+    // Initialize Map
+    function initMap() {
+      if (map) return;
+      // Default center: India (20.5937, 78.9629) zoom 5
+      map = L.map('map', { zoomControl: false }).setView([20.5937, 78.9629], 5);
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(map);
+    }
+
+    // Verify Auth & Bootstrap
+    async function verifyAuth() {
+      if (!authToken) {
+        showLoginModal();
+        return;
+      }
+      try {
+        const res = await fetch('/api/v1/auth/me', { headers: getAuthHeaders() });
+        if (!res.ok) {
+          showLoginModal();
+          return;
+        }
+        const user = await res.json();
+        if (user.role !== 'ADMIN') {
+          alert('Access denied. Administrator privileges required.');
+          handleLogout();
+          return;
+        }
+        currentAdminUser = user;
+        document.getElementById('admin-name').textContent = user.name || 'Admin';
+        document.getElementById('admin-email').textContent = user.email;
+        hideLoginModal();
+        startPolling();
+        loadAllInitialData();
+      } catch (e) {
+        showLoginModal();
+      }
+    }
+
+    function showLoginModal() {
+      document.getElementById('login-modal').classList.remove('hidden');
+    }
+
+    function hideLoginModal() {
+      document.getElementById('login-modal').classList.add('hidden');
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('login-email').value;
+      const pass = document.getElementById('login-password').value;
+      const btn = document.getElementById('login-submit-btn');
+      const errBox = document.getElementById('login-error');
+
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+      errBox.classList.add('hidden');
+
+      try {
+        const res = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ username: email, password: pass })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || 'Authentication failed');
+        }
+
+        authToken = data.access_token;
+        localStorage.setItem('medpriority_admin_token', authToken);
+        hideLoginModal();
+        showToast('Signed in successfully as Administrator');
+        verifyAuth();
+      } catch (err) {
+        errBox.textContent = err.message;
+        errBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    }
+
+    function handleLogout() {
+      localStorage.removeItem('medpriority_admin_token');
+      authToken = '';
+      currentAdminUser = null;
+      if (pollInterval) clearInterval(pollInterval);
+      showLoginModal();
+    }
+
+    function toggleAudio() {
+      audioEnabled = !audioEnabled;
+      document.getElementById('audio-label').textContent = audioEnabled ? 'Alerts On' : 'Alerts Off';
+      document.getElementById('audio-icon').textContent = audioEnabled ? '🔔' : '🔕';
+    }
+
+    // Initial Load & Polling
+    function loadAllInitialData() {
+      initMap();
+      loadAdminStats();
+      loadActiveEmergencies();
+      loadAdminUsers();
+      loadAdminVehicles();
+    }
+
+    function startPolling() {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => {
+        loadActiveEmergencies();
+        loadAdminStats();
+      }, 3000);
+    }
+
+    function manualRefresh() {
+      loadActiveEmergencies();
+      loadAdminStats();
+      showToast('Tactical data refreshed');
+    }
+
+    // -------------------------------------------------------------------------
+    // Stats
+    // -------------------------------------------------------------------------
+    async function loadAdminStats() {
+      try {
+        const res = await fetch('/api/v1/admin/stats', { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const json = await res.json();
+        const d = json.data;
+        document.getElementById('stat-active').textContent = d.active_emergencies;
+        document.getElementById('stat-total-users').textContent = d.total_users;
+        document.getElementById('stat-total-vehicles').textContent = d.total_vehicles;
+        document.getElementById('stat-unverified').textContent = d.unverified_vehicles;
+
+        document.getElementById('badge-total-users').textContent = d.total_users;
+        document.getElementById('badge-total-vehicles').textContent = d.total_vehicles;
+
+        const badgeSos = document.getElementById('badge-active-sos');
+        if (d.active_emergencies > 0) {
+          badgeSos.textContent = d.active_emergencies;
+          badgeSos.classList.remove('hidden');
+        } else {
+          badgeSos.classList.add('hidden');
+        }
+      } catch (_) {}
+    }
+
+    // -------------------------------------------------------------------------
+    // Active Emergencies
+    // -------------------------------------------------------------------------
+    async function loadActiveEmergencies() {
+      try {
+        const res = await fetch('/api/v1/emergencies/admin/active', { headers: getAuthHeaders() });
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) verifyAuth();
+          return;
+        }
+
+        const json = await res.json();
+        const sessions = json.data || [];
+        activeSessionsCache = sessions;
+
+        // Sound alert on new beacon
+        let hasNew = false;
+        const currentIds = new Set(sessions.map(s => s.id));
+        sessions.forEach(s => {
+          if (!knownActiveSessionIds.has(s.id)) hasNew = true;
+        });
+        knownActiveSessionIds = currentIds;
+
+        if (hasNew && audioEnabled && sessions.length > 0) {
+          try { document.getElementById('sos-audio').play(); } catch(_) {}
+        }
+
+        document.getElementById('map-active-count').textContent = `${sessions.length} Active`;
+        renderLiveSessionCards(sessions);
+        updateMapMarkers(sessions);
+
+        if (sessions.length === 0) {
+          document.getElementById('no-active-banner').classList.remove('hidden');
+        } else {
+          document.getElementById('no-active-banner').classList.add('hidden');
+        }
+      } catch (e) {
+        console.error('Error loading emergencies:', e);
+      }
+    }
+
+    function renderLiveSessionCards(sessions) {
+      const container = document.getElementById('live-sessions-container');
+      if (sessions.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+            <span class="text-3xl">🛡️</span>
+            <p class="text-sm font-semibold text-gray-700 mt-2">All Units Standing By</p>
+            <p class="text-xs text-gray-400 mt-1">No active SOS emergencies in the field.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = sessions.map(s => {
+        const hasLoc = s.latest_latitude !== null && s.latest_longitude !== null;
+        const lat = hasLoc ? s.latest_latitude.toFixed(5) : 'Awaiting GPS';
+        const lng = hasLoc ? s.latest_longitude.toFixed(5) : '';
+        const startTime = new Date(s.started_at).toLocaleTimeString();
+        const staleBadge = !hasLoc
+          ? '<span class="text-[10px] text-gray-400 font-semibold">No GPS</span>'
+          : (s.is_location_stale
+              ? '<span class="text-[10px] text-amber-600 font-semibold">⚠ Stale (>2m)</span>'
+              : '<span class="text-[10px] text-emerald-600 font-semibold">● Live</span>');
+
+        return `
+          <div class="bg-red-50/50 border border-red-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition">
+            <div class="flex items-start justify-between">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <span class="font-bold text-gray-900 text-sm">${s.vehicle_number}</span>
+                  <span class="text-[11px] bg-red-100 text-red-700 font-semibold px-2 py-0.5 rounded-full">
+                    SESSION #${s.id}
+                  </span>
+                </div>
+                <p class="text-xs text-gray-600 mt-0.5">${s.user_name} • ${s.vehicle_color} ${s.vehicle_type}</p>
+              </div>
+              <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+              </span>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-2 text-xs bg-white/80 p-2.5 rounded-xl border border-red-100">
+              <div>
+                <span class="text-[10px] text-gray-400 block font-semibold uppercase">Started At</span>
+                <span class="font-medium text-gray-800">${startTime}</span>
+              </div>
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="text-[10px] text-gray-400 block font-semibold uppercase">Coordinates</span>
+                  ${staleBadge}
+                </div>
+                <span class="font-medium text-gray-800 font-mono">${lat} ${lng}</span>
+              </div>
+            </div>
+
+            <div class="mt-3 flex items-center space-x-2">
+              <button onclick="focusSessionOnMap(${s.id}, ${s.latest_latitude}, ${s.latest_longitude})"
+                      class="flex-1 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-xs font-semibold rounded-xl text-gray-700 transition">
+                📍 Track on Map
+              </button>
+              <button onclick="openEndSosModal(${s.id}, '${s.vehicle_number}', '${s.user_name}')"
+                      class="py-1.5 px-3 bg-red-600 hover:bg-red-700 text-xs font-semibold rounded-xl text-white transition">
+                End SOS
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateMapMarkers(sessions) {
+      if (!map) return;
+      const activeIds = new Set(sessions.map(s => s.id));
+
+      // Clear removed
+      for (let sid in markers) {
+        if (!activeIds.has(parseInt(sid))) {
+          map.removeLayer(markers[sid]);
+          delete markers[sid];
+          if (polylines[sid]) {
+            map.removeLayer(polylines[sid]);
+            delete polylines[sid];
+          }
+        }
+      }
+
+      let newlyAdded = false;
+
+      // Add/update active
+      sessions.forEach(s => {
+        if (s.latest_latitude === null || s.latest_longitude === null) return;
+        const pos = [s.latest_latitude, s.latest_longitude];
+
+        if (!markers[s.id]) {
+          const icon = L.divIcon({
+            className: 'custom-sos-container',
+            html: `
+              <div class="custom-sos-marker">
+                <div class="radar-pulse-ring"></div>
+                <div class="beacon-core">🚑</div>
+                <div class="vehicle-tag">${s.vehicle_number}</div>
+              </div>
+            `,
+            iconSize: [44, 44],
+            iconAnchor: [22, 22]
+          });
+          const marker = L.marker(pos, { icon, zIndexOffset: 1000 }).addTo(map);
+          marker.bindPopup(`
+            <div style="font-family:system-ui; padding:6px; min-width:180px;">
+              <div style="font-weight:bold; color:#ef4444; font-size:14px; display:flex; align-items:center; gap:4px;">
+                <span>🚨</span> LIVE EMERGENCY #${s.id}
+              </div>
+              <div style="font-size:13px; font-weight:700; margin-top:4px; font-family:monospace; background:#f3f4f6; padding:2px 6px; border-radius:4px; display:inline-block;">
+                ${s.vehicle_number}
+              </div>
+              <div style="font-size:12px; color:#374151; margin-top:4px;"><strong>Driver:</strong> ${s.user_name}</div>
+              <div style="font-size:12px; color:#374151;"><strong>Vehicle:</strong> ${s.vehicle_color} ${s.vehicle_type}</div>
+              <div style="font-size:11px; color:#6b7280; margin-top:4px; font-family:monospace;">
+                GPS: ${s.latest_latitude.toFixed(5)}, ${s.latest_longitude.toFixed(5)}
+              </div>
+            </div>
+          `);
+          markers[s.id] = marker;
+          newlyAdded = true;
+        } else {
+          markers[s.id].setLatLng(pos);
+        }
+      });
+
+      // If a new beacon was detected and user is on dispatch view, auto-fit to show the vehicle!
+      if (newlyAdded && Object.keys(markers).length > 0) {
+        centerMapOnActive();
+      }
+    }
+
+    function focusSessionOnMap(sessionId, lat, lng) {
+      if (!lat || !lng || !map) {
+        showToast('Waiting for initial GPS fix for this session', 'error');
+        return;
+      }
+      map.flyTo([lat, lng], 16, { animate: true, duration: 1.2 });
+      if (markers[sessionId]) {
+        setTimeout(() => markers[sessionId].openPopup(), 600);
+      }
+    }
+
+    function centerMapOnActive() {
+      if (!map || Object.keys(markers).length === 0) return;
+      const group = new L.featureGroup(Object.values(markers));
+      map.fitBounds(group.getBounds().pad(0.2));
+    }
+
+    // -------------------------------------------------------------------------
+    // User Management CRUD
+    // -------------------------------------------------------------------------
+    async function loadAdminUsers() {
+      try {
+        const res = await fetch('/api/v1/admin/users', { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const json = await res.json();
+        usersCache = json.data || [];
+        renderUsersTable(usersCache);
+        populateUserDropdowns();
+      } catch (e) {
+        console.error('Error loading users:', e);
+      }
+    }
+
+    function renderUsersTable(users) {
+      const tbody = document.getElementById('users-table-body');
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400">No users found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = users.map(u => {
+        const isCurrentAdmin = currentAdminUser && currentAdminUser.id === u.id;
+        const rolePill = u.role === 'ADMIN'
+          ? '<span class="bg-purple-100 text-purple-700 font-semibold px-2 py-0.5 rounded-full border border-purple-200">ADMIN</span>'
+          : '<span class="bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full border border-blue-200">USER</span>';
+
+        const statusPill = u.is_active
+          ? '<span class="bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">Active</span>'
+          : '<span class="bg-gray-100 text-gray-600 font-semibold px-2 py-0.5 rounded-full">Suspended</span>';
+
+        const dateStr = new Date(u.created_at).toLocaleDateString();
+
+        return `
+          <tr class="hover:bg-gray-50/60 transition">
+            <td class="py-3 px-3">
+              <div class="flex items-center space-x-2.5">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 text-white font-bold flex items-center justify-center text-xs">
+                  ${u.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div class="font-bold text-gray-900">${u.name} ${isCurrentAdmin ? '<span class="text-[10px] text-blue-600">(You)</span>' : ''}</div>
+                  <div class="text-[11px] text-gray-500">${u.email}</div>
+                </div>
+              </div>
+            </td>
+            <td class="py-3 px-3">${rolePill}</td>
+            <td class="py-3 px-3">${statusPill}</td>
+            <td class="py-3 px-3 font-semibold text-gray-700">${u.vehicles_count} vehicles</td>
+            <td class="py-3 px-3 text-gray-500">${dateStr}</td>
+            <td class="py-3 px-3 text-right">
+              <div class="flex items-center justify-end space-x-1.5">
+                <button onclick="toggleUserStatus(${u.id}, ${!u.is_active})" title="${u.is_active ? 'Suspend account' : 'Activate account'}"
+                        class="p-1.5 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition">
+                  ${u.is_active ? '⏸' : '▶'}
+                </button>
+                <button onclick="toggleUserRole(${u.id}, '${u.role === 'ADMIN' ? 'USER' : 'ADMIN'}')" title="Toggle Admin role"
+                        class="p-1.5 text-gray-500 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition">
+                  🛡️
+                </button>
+                ${!isCurrentAdmin ? `
+                  <button onclick="deleteUser(${u.id}, '${u.name}')" title="Delete User"
+                          class="p-1.5 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50 transition">
+                    🗑️
+                  </button>
+                ` : ''}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function filterUsersTable() {
+      const q = document.getElementById('users-search-input').value.toLowerCase().trim();
+      const filtered = usersCache.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+      renderUsersTable(filtered);
+    }
+
+    function openAddUserModal() {
+      document.getElementById('new-user-name').value = '';
+      document.getElementById('new-user-email').value = '';
+      document.getElementById('new-user-password').value = '';
+      document.getElementById('new-user-role').value = 'USER';
+      document.getElementById('add-user-modal').classList.remove('hidden');
+    }
+
+    function closeAddUserModal() {
+      document.getElementById('add-user-modal').classList.add('hidden');
+    }
+
+    async function submitAddUser(e) {
+      e.preventDefault();
+      const name = document.getElementById('new-user-name').value;
+      const email = document.getElementById('new-user-email').value;
+      const pass = document.getElementById('new-user-password').value;
+      const role = document.getElementById('new-user-role').value;
+      const btn = document.getElementById('add-user-btn');
+
+      btn.disabled = true;
+      btn.textContent = 'Creating...';
+
+      try {
+        const res = await fetch('/api/v1/admin/users', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ name, email, password: pass, role })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail?.message || data.detail || 'Failed to create user');
+
+        showToast(`User ${email} created successfully`);
+        closeAddUserModal();
+        loadAdminUsers();
+        loadAdminStats();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create User';
+      }
+    }
+
+    async function deleteUser(userId, userName) {
+      if (!confirm(`Are you sure you want to permanently delete user "${userName}" and all their registered vehicles?`)) return;
+      try {
+        const res = await fetch(`/api/v1/admin/users/${userId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to delete user');
+
+        showToast(`User "${userName}" deleted`);
+        loadAdminUsers();
+        loadAdminVehicles();
+        loadAdminStats();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function toggleUserStatus(userId, newStatus) {
+      try {
+        const res = await fetch(`/api/v1/admin/users/${userId}/status`, {
+          method: 'PATCH',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ is_active: newStatus })
+        });
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.detail || 'Failed to update user status');
+        }
+        showToast('User status updated');
+        loadAdminUsers();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function toggleUserRole(userId, newRole) {
+      if (!confirm(`Change user role to ${newRole}?`)) return;
+      try {
+        const res = await fetch(`/api/v1/admin/users/${userId}/status`, {
+          method: 'PATCH',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ role: newRole })
+        });
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.detail || 'Failed to update user role');
+        }
+        showToast(`User role updated to ${newRole}`);
+        loadAdminUsers();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Fleet & Vehicles CRUD
+    // -------------------------------------------------------------------------
+    async function loadAdminVehicles() {
+      try {
+        const res = await fetch('/api/v1/admin/vehicles', { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const json = await res.json();
+        vehiclesCache = json.data || [];
+        renderVehiclesTable(vehiclesCache);
+        populateVehicleDropdowns();
+      } catch (e) {
+        console.error('Error loading vehicles:', e);
+      }
+    }
+
+    function renderVehiclesTable(vehicles) {
+      const tbody = document.getElementById('vehicles-table-body');
+      if (vehicles.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-gray-400">No vehicles registered.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = vehicles.map(v => {
+        const verifiedPill = v.is_verified
+          ? '<span class="bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full border border-emerald-200">Verified</span>'
+          : '<span class="bg-amber-100 text-amber-700 font-semibold px-2 py-0.5 rounded-full border border-amber-200">Pending Review</span>';
+
+        const dateStr = new Date(v.created_at).toLocaleDateString();
+
+        return `
+          <tr class="hover:bg-gray-50/60 transition">
+            <td class="py-3 px-3">
+              <span class="font-bold text-gray-900 font-mono text-xs bg-gray-100 px-2 py-1 rounded-md border border-gray-200">
+                ${v.vehicle_number}
+              </span>
+            </td>
+            <td class="py-3 px-3">
+              <div class="font-semibold text-gray-900">${v.owner_name}</div>
+              <div class="text-[11px] text-gray-500">${v.owner_email}</div>
+            </td>
+            <td class="py-3 px-3">
+              <span class="font-medium text-gray-700">${v.vehicle_type}</span> • <span class="text-gray-500">${v.vehicle_color}</span>
+            </td>
+            <td class="py-3 px-3">${verifiedPill}</td>
+            <td class="py-3 px-3 text-gray-500">${dateStr}</td>
+            <td class="py-3 px-3 text-right">
+              <div class="flex items-center justify-end space-x-1.5">
+                <button onclick="toggleVehicleVerify(${v.id})" title="${v.is_verified ? 'Revoke verification' : 'Verify vehicle'}"
+                        class="px-2.5 py-1 text-xs font-semibold rounded-lg ${v.is_verified ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} transition">
+                  ${v.is_verified ? 'Unverify' : 'Verify'}
+                </button>
+                <button onclick="deleteVehicle(${v.id}, '${v.vehicle_number}')" title="Delete vehicle"
+                        class="p-1.5 text-red-500 hover:text-red-700 rounded-lg hover:bg-red-50 transition">
+                  🗑️
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function filterVehiclesTable() {
+      const q = document.getElementById('vehicles-search-input').value.toLowerCase().trim();
+      const filtered = vehiclesCache.filter(v =>
+        v.vehicle_number.toLowerCase().includes(q) ||
+        v.owner_name.toLowerCase().includes(q) ||
+        v.owner_email.toLowerCase().includes(q)
+      );
+      renderVehiclesTable(filtered);
+    }
+
+    function populateUserDropdowns() {
+      const select = document.getElementById('new-veh-user-id');
+      select.innerHTML = '<option value="">Select a user...</option>' +
+        usersCache.map(u => `<option value="${u.id}">${u.name} (${u.email})</option>`).join('');
+    }
+
+    function populateVehicleDropdowns() {
+      const select = document.getElementById('test-sos-vehicle-id');
+      select.innerHTML = '<option value="">Select a vehicle...</option>' +
+        vehiclesCache.map(v => `<option value="${v.id}">${v.vehicle_number} — ${v.owner_name} (${v.vehicle_type})</option>`).join('');
+    }
+
+    function openAddVehicleModal() {
+      populateUserDropdowns();
+      document.getElementById('new-veh-number').value = '';
+      document.getElementById('new-veh-owner').value = '';
+      document.getElementById('new-veh-color').value = '';
+      document.getElementById('new-veh-type').value = 'CAR';
+      document.getElementById('new-veh-verified').checked = true;
+      document.getElementById('add-vehicle-modal').classList.remove('hidden');
+    }
+
+    function closeAddVehicleModal() {
+      document.getElementById('add-vehicle-modal').classList.add('hidden');
+    }
+
+    async function submitAddVehicle(e) {
+      e.preventDefault();
+      const userId = parseInt(document.getElementById('new-veh-user-id').value);
+      const vehicleNumber = document.getElementById('new-veh-number').value.trim();
+      const ownerName = document.getElementById('new-veh-owner').value.trim();
+      const vehicleType = document.getElementById('new-veh-type').value;
+      const vehicleColor = document.getElementById('new-veh-color').value.trim();
+      const isVerified = document.getElementById('new-veh-verified').checked;
+      const btn = document.getElementById('add-veh-btn');
+
+      if (!userId) { alert('Please select a valid user'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Registering...';
+
+      try {
+        const res = await fetch('/api/v1/admin/vehicles', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            user_id: userId,
+            vehicle_number: vehicleNumber,
+            owner_name: ownerName,
+            vehicle_type: vehicleType,
+            vehicle_color: vehicleColor,
+            is_verified: isVerified
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail?.message || data.detail || 'Failed to register vehicle');
+
+        showToast(`Vehicle ${vehicleNumber.toUpperCase()} registered`);
+        closeAddVehicleModal();
+        loadAdminVehicles();
+        loadAdminStats();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Register';
+      }
+    }
+
+    async function toggleVehicleVerify(vehicleId) {
+      try {
+        const res = await fetch(`/api/v1/admin/vehicles/${vehicleId}/verify`, {
+          method: 'PUT',
+          headers: getAuthHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to toggle verification');
+        showToast('Vehicle verification status updated');
+        loadAdminVehicles();
+        loadAdminStats();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    async function deleteVehicle(vehicleId, number) {
+      if (!confirm(`Delete vehicle ${number}? This will also delete any related location logs.`)) return;
+      try {
+        const res = await fetch(`/api/v1/admin/vehicles/${vehicleId}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to delete vehicle');
+        showToast(`Vehicle ${number} deleted`);
+        loadAdminVehicles();
+        loadAdminStats();
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Emergency Resolution & Testing
+    // -------------------------------------------------------------------------
+    function openEndSosModal(sessionId, vehicleNum, driverName) {
+      endingSessionId = sessionId;
+      document.getElementById('end-sos-desc').textContent =
+        `Conclude active distress session #${sessionId} for ${vehicleNum} (Driver: ${driverName}).`;
+      document.getElementById('end-sos-notes').value = '';
+      document.getElementById('end-sos-modal').classList.remove('hidden');
+    }
+
+    function closeEndSosModal() {
+      endingSessionId = null;
+      document.getElementById('end-sos-modal').classList.add('hidden');
+    }
+
+    async function submitEndSos(e) {
+      e.preventDefault();
+      if (!endingSessionId) return;
+      const notes = document.getElementById('end-sos-notes').value.trim();
+      const btn = document.getElementById('end-sos-btn');
+
+      btn.disabled = true;
+      btn.textContent = 'Ending...';
+
+      try {
+        const res = await fetch(`/api/v1/emergencies/${endingSessionId}/end`, {
+          method: 'POST',
+          headers: getAuthHeaders()
+        });
+        if (!res.ok) {
+          const d = await res.json();
+          throw new Error(d.detail?.message || d.detail || 'Failed to end session');
+        }
+
+        showToast(`Emergency Session #${endingSessionId} resolved`);
+        closeEndSosModal();
+        loadActiveEmergencies();
+        loadAdminStats();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & End Session';
+      }
+    }
+
+    function openTestSosModal() {
+      populateVehicleDropdowns();
+      document.getElementById('test-sos-modal').classList.remove('hidden');
+    }
+
+    function closeTestSosModal() {
+      document.getElementById('test-sos-modal').classList.add('hidden');
+    }
+
+    async function submitTestSos(e) {
+      e.preventDefault();
+      const vehicleId = parseInt(document.getElementById('test-sos-vehicle-id').value);
+      const btn = document.getElementById('test-sos-btn');
+      if (!vehicleId) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Triggering...';
+
+      try {
+        const res = await fetch('/api/v1/emergencies/start', {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({ vehicle_id: vehicleId })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail?.message || data.detail || 'Could not start SOS');
+
+        const sessId = data.data.id;
+        showToast(`SOS Emergency #${sessId} activated!`);
+        closeTestSosModal();
+
+        // Also post a simulated initial location point so map shows it immediately!
+        try {
+          await fetch(`/api/v1/emergencies/${sessId}/location`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              latitude: 28.6139 + (Math.random() - 0.5) * 0.05,
+              longitude: 77.2090 + (Math.random() - 0.5) * 0.05,
+              accuracy: 5.0
+            })
+          });
+        } catch (_) {}
+
+        loadActiveEmergencies();
+        loadAdminStats();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Trigger SOS';
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Emergency History
+    // -------------------------------------------------------------------------
+    async function loadAdminHistory() {
+      try {
+        const res = await fetch('/api/v1/admin/history?limit=50', { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const json = await res.json();
+        historyCache = json.data || [];
+        renderHistoryTable(historyCache);
+      } catch (e) {
+        console.error('Error loading history:', e);
+      }
+    }
+
+    function renderHistoryTable(sessions) {
+      const tbody = document.getElementById('history-table-body');
+      if (sessions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-gray-400">No emergency logs recorded.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = sessions.map(s => {
+        const statusBadge = s.status === 'ACTIVE'
+          ? '<span class="bg-red-100 text-red-700 font-semibold px-2 py-0.5 rounded-full">ACTIVE</span>'
+          : (s.status === 'ENDED'
+              ? '<span class="bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">RESOLVED</span>'
+              : '<span class="bg-gray-100 text-gray-600 font-semibold px-2 py-0.5 rounded-full">EXPIRED</span>');
+
+        const startStr = new Date(s.started_at).toLocaleString();
+        const endStr = s.ended_at ? new Date(s.ended_at).toLocaleString() : '—';
+        const resolver = s.resolved_by_admin_name || '—';
+        const notes = s.admin_notes || '—';
+
+        return `
+          <tr class="hover:bg-gray-50/60 transition">
+            <td class="py-3 px-3 font-bold text-gray-900">#${s.id}</td>
+            <td class="py-3 px-3">
+              <div class="font-bold font-mono text-gray-800">${s.vehicle_number}</div>
+              <div class="text-[11px] text-gray-500">${s.user_name} (${s.vehicle_type})</div>
+            </td>
+            <td class="py-3 px-3">${statusBadge}</td>
+            <td class="py-3 px-3 text-gray-700">${startStr}</td>
+            <td class="py-3 px-3 text-gray-700">${endStr}</td>
+            <td class="py-3 px-3 text-gray-700 font-medium">${resolver}</td>
+            <td class="py-3 px-3 text-gray-700 font-semibold">${s.location_points_count} pts</td>
+            <td class="py-3 px-3 text-gray-500 max-w-xs truncate" title="${notes}">${notes}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // Auto-bootstrap
+    document.addEventListener('DOMContentLoaded', () => {
+      verifyAuth();
+    });
+  </script>
+</body>
+</html>

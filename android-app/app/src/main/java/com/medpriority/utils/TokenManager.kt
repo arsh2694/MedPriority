@@ -44,8 +44,21 @@ class TokenManager private constructor(context: Context) {
         sharedPreferences.edit().remove(KEY_JWT_TOKEN).commit()
     }
 
+    fun getServerUrl(): String? {
+        return sharedPreferences.getString(KEY_SERVER_URL, null)
+    }
+
+    fun setServerUrl(url: String?) {
+        if (url.isNullOrBlank()) {
+            sharedPreferences.edit().remove(KEY_SERVER_URL).commit()
+        } else {
+            sharedPreferences.edit().putString(KEY_SERVER_URL, url.trim()).commit()
+        }
+    }
+
     companion object {
         private const val KEY_JWT_TOKEN = "JWT_TOKEN"
+        private const val KEY_SERVER_URL = "SERVER_URL"
 
         @Volatile
         private var instance: TokenManager? = null

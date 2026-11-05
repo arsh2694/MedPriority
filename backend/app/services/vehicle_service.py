@@ -162,3 +162,29 @@ def delete_vehicle(
 
     db.delete(vehicle)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Verification (Admin only)
+# ---------------------------------------------------------------------------
+
+def verify_vehicle(db: Session, vehicle_id: int, current_user: User) -> Vehicle:
+    """
+    Verifies a vehicle. Requires ADMIN role.
+    """
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required to verify vehicles.",
+        )
+    vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not vehicle:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No vehicle found with ID {vehicle_id}.",
+        )
+    vehicle.is_verified = True
+    db.commit()
+    db.refresh(vehicle)
+    return vehicle
+

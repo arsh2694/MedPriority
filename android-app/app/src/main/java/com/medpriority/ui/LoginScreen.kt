@@ -189,7 +189,8 @@ fun LoginScreen(
                                     generalError = msg
                                 }
                             } catch (e: Exception) {
-                                generalError = "Unable to connect to server. Please check your network."
+                                val currentTarget = RetrofitClient.activeHost ?: if (RetrofitClient.isRunningOnEmulator()) "10.0.2.2:8000" else "192.168.29.14:8000"
+                                generalError = "Unable to connect to server ($currentTarget). Please check network or change server IP below."
                             } finally {
                                 isLoading = false
                             }
@@ -222,7 +223,72 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Developer / Network Server IP Configuration
+            var showServerDialog by remember { mutableStateOf(false) }
+            val currentServerText = tokenManager.getServerUrl() ?: (RetrofitClient.activeHost ?: if (RetrofitClient.isRunningOnEmulator()) "10.0.2.2:8000" else "192.168.29.14:8000")
+
+            TextButton(
+                onClick = { showServerDialog = true },
+                contentPadding = PaddingValues(4.dp)
+            ) {
+                Text(
+                    text = "Server: $currentServerText ⚙",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+            }
+
+            if (showServerDialog) {
+                var serverInput by remember { mutableStateOf(currentServerText) }
+                AlertDialog(
+                    onDismissRequest = { showServerDialog = false },
+                    title = { Text(text = "Server Configuration", fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text(
+                                text = "Set the backend host:port for your network:\n• Physical Device (Wi-Fi): 192.168.29.14:8000\n• Physical Device (USB Reverse): 127.0.0.1:8000\n• Emulator: 10.0.2.2:8000",
+                                fontSize = 12.sp,
+                                color = TextSecondary,
+                                lineHeight = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedTextField(
+                                value = serverInput,
+                                onValueChange = { serverInput = it },
+                                singleLine = true,
+                                label = { Text("Server Host:Port") }
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val clean = serverInput.trim().removePrefix("http://").removePrefix("https://").trimEnd('/')
+                                tokenManager.setServerUrl(clean)
+                                RetrofitClient.activeHost = clean
+                                showServerDialog = false
+                            }
+                        ) {
+                            Text("Save", fontWeight = FontWeight.Bold, color = AccentBlue)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                tokenManager.setServerUrl(null)
+                                RetrofitClient.activeHost = null
+                                showServerDialog = false
+                            }
+                        ) {
+                            Text("Reset Auto", color = TextSecondary)
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
         }
     }
 }

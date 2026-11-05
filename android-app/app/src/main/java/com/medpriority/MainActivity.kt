@@ -75,10 +75,21 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToEmergency = { emergencyId ->
                                     navController.navigate("emergency/$emergencyId")
                                 },
+                                onNavigateToAdmin = {
+                                    navController.navigate("admin_dashboard")
+                                },
                                 onLogout = {
                                     navController.navigate("login") {
                                         popUpTo(0) { inclusive = true }
                                     }
+                                }
+                            )
+                        }
+
+                        composable("admin_dashboard") {
+                            AdminDashboardScreen(
+                                onNavigateBack = {
+                                    navController.popBackStack()
                                 }
                             )
                         }

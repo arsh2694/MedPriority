@@ -74,4 +74,23 @@ interface ApiService {
         @Path("id") emergencyId: Int,
         @Body location: LocationUpdateRequest
     ): Response<LocationUpdateResponse>
+
+    // -------------------------------------------------------------------------
+    // Admin & Dispatcher
+    // -------------------------------------------------------------------------
+
+    @GET("api/v1/emergencies/admin/active")
+    suspend fun getAdminActiveEmergencies(): Response<AdminEmergencyListResponse>
+
+    @PUT("api/v1/vehicles/{id}/verify")
+    suspend fun verifyVehicle(
+        @Path("id") vehicleId: Int
+    ): Response<VehicleDto>
+
+    @GET("api/v1/admin/stats")
+    suspend fun getAdminStats(): Response<AdminStatsResponse>
+
+    @GET("api/v1/admin/vehicles")
+    suspend fun getAdminVehicles(): Response<VehicleListResponse>
+
 }

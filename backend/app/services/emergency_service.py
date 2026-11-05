@@ -22,6 +22,7 @@ Audit events emitted:
 """
 
 import logging
+from typing import Optional
 from datetime import datetime, timedelta, UTC
 
 from sqlalchemy.orm import Session
@@ -133,8 +134,10 @@ def start_emergency(
             },
         )
 
-    # 2. Verify ownership — user can only use their own vehicle
-    if vehicle.user_id != current_user.id:
+    target_user_id = vehicle.user_id if current_user.role == UserRole.ADMIN else current_user.id
+
+    # 2. Verify ownership — user can only use their own vehicle (admins can dispatch for any)
+    if vehicle.user_id != current_user.id and current_user.role != UserRole.ADMIN:
         audit_log.warning(
             "UNAUTHORIZED_EMERGENCY_ACCESS | action=start vehicle_id=%s "
             "requester_id=%s owner_id=%s",
@@ -151,7 +154,7 @@ def start_emergency(
 
     # 3. Check for existing ACTIVE session — expire on-the-fly first
     existing = db.query(EmergencySession).filter(
-        EmergencySession.user_id == current_user.id,
+        EmergencySession.user_id == target_user_id,
         EmergencySession.status == EmergencyStatus.ACTIVE,
     ).first()
     if existing:
@@ -163,7 +166,7 @@ def start_emergency(
                     "status": "error",
                     "error_code": "ACTIVE_EMERGENCY_EXISTS",
                     "message": (
-                        "You already have an active emergency session. "
+                        "An active emergency session already exists for this vehicle owner. "
                         "End the current session before starting a new one."
                     ),
                 },
@@ -173,7 +176,7 @@ def start_emergency(
     now = datetime.now(UTC).replace(tzinfo=None)
     expire_minutes = settings.EMERGENCY_SESSION_EXPIRY_MINUTES
     new_session = EmergencySession(
-        user_id=current_user.id,
+        user_id=target_user_id,
         vehicle_id=vehicle.id,
         status=EmergencyStatus.ACTIVE,
         started_at=now,
@@ -198,13 +201,14 @@ def end_emergency(
     db: Session,
     session_id: int,
     current_user: User,
+    admin_notes: Optional[str] = None,
 ) -> EmergencySession:
     """
     End an active emergency session.
 
     Raises:
       404 — session not found
-      403 — not the owner
+      403 — not the owner (admins bypass)
       409 — session is not active (already ended or expired)
     """
     sess = _get_session_or_404(db, session_id)
@@ -223,12 +227,17 @@ def end_emergency(
 
     sess.status = EmergencyStatus.ENDED
     sess.ended_at = datetime.now(UTC).replace(tzinfo=None)
+    if current_user.role == UserRole.ADMIN:
+        sess.resolved_by_admin_id = current_user.id
+        if admin_notes:
+            sess.admin_notes = admin_notes.strip()
+
     db.commit()
     db.refresh(sess)
 
     audit_log.info(
-        "EMERGENCY_ENDED | session_id=%s user_id=%s",
-        sess.id, current_user.id
+        "EMERGENCY_ENDED | session_id=%s user_id=%s resolved_by_admin_id=%s",
+        sess.id, current_user.id, sess.resolved_by_admin_id
     )
 
     return sess
@@ -319,31 +328,144 @@ def record_location(
 ) -> LocationUpdate:
     """
     Records a GPS location for an ACTIVE emergency session.
+
+    Out-of-order protection: If the incoming recorded_at is older than the
+    latest stored recorded_at, the update is silently discarded and the
+    existing latest record is returned. This prevents stale or delayed
+    location packets from overwriting fresher ones.
+
+    No GPS coordinates are written to the audit log.
     """
     session = get_emergency_by_id(db, session_id, user)
-    
+
     if session.status != EmergencyStatus.ACTIVE:
-        import logging; logging.getLogger(__name__).warning(
-            f"LOCATION_REJECTED: User {user.id} tried to update location for "
-            f"session {session_id} in {session.status.name} state."
+        audit_log.warning(
+            "LOCATION_REJECTED_INACTIVE | user_id=%s session_id=%s status=%s",
+            user.id, session_id, session.status.name,
         )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "error_code": "SESSION_NOT_ACTIVE",
-                "message": "Cannot record location for an inactive emergency session."
-            }
+                "message": "Cannot record location for an inactive emergency session.",
+            },
         )
 
-    # Valid, create location record
+    # Out-of-order guard: fetch the most recent stored location
+    latest_existing = (
+        db.query(LocationUpdate)
+        .filter(LocationUpdate.session_id == session_id)
+        .order_by(LocationUpdate.recorded_at.desc())
+        .first()
+    )
+
+    # Normalize incoming recorded_at to naive UTC for comparison
+    incoming_ts = location_data.recorded_at
+    if hasattr(incoming_ts, "tzinfo") and incoming_ts.tzinfo is not None:
+        incoming_ts = incoming_ts.replace(tzinfo=None)
+
+    if latest_existing is not None:
+        existing_ts = latest_existing.recorded_at
+        if hasattr(existing_ts, "tzinfo") and existing_ts.tzinfo is not None:
+            existing_ts = existing_ts.replace(tzinfo=None)
+
+        if incoming_ts <= existing_ts:
+            # Discard stale / duplicate update, return the newest record
+            audit_log.debug(
+                "LOCATION_DISCARDED_OUT_OF_ORDER | session_id=%s", session_id
+            )
+            return latest_existing
+
     loc = LocationUpdate(
         session_id=session.id,
         latitude=location_data.latitude,
         longitude=location_data.longitude,
         accuracy=location_data.accuracy,
-        recorded_at=location_data.recorded_at
+        recorded_at=incoming_ts,
     )
     db.add(loc)
     db.commit()
     db.refresh(loc)
     return loc
+
+
+def get_admin_active_emergencies(db: Session) -> list[dict]:
+    """
+    Returns all active emergency sessions with driver, vehicle, and latest location.
+    Admin/Dispatcher usage.
+    """
+    sessions = db.query(EmergencySession).filter(
+        EmergencySession.status == EmergencyStatus.ACTIVE
+    ).all()
+
+    active_sessions = []
+    for s in sessions:
+        s = _expire_if_needed(s, db)
+        if s.status == EmergencyStatus.ACTIVE:
+            active_sessions.append(s)
+
+    results = []
+    stale_threshold = timedelta(minutes=2)  # location older than 2 min is stale
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    for s in active_sessions:
+        user = db.query(User).filter(User.id == s.user_id).first()
+        vehicle = db.query(Vehicle).filter(Vehicle.id == s.vehicle_id).first()
+        # Order by recorded_at DESC (not id) to ensure the timestamp-newest location
+        latest_loc = (
+            db.query(LocationUpdate)
+            .filter(LocationUpdate.session_id == s.id)
+            .order_by(LocationUpdate.recorded_at.desc())
+            .first()
+        )
+
+        is_location_stale = True  # default: no data = stale
+        if latest_loc is not None:
+            loc_ts = latest_loc.recorded_at
+            if hasattr(loc_ts, "tzinfo") and loc_ts.tzinfo is not None:
+                loc_ts = loc_ts.replace(tzinfo=None)
+            is_location_stale = (now - loc_ts) > stale_threshold
+
+        results.append({
+            "id": s.id,
+            "user_id": s.user_id,
+            "user_name": user.name if user else "Unknown User",
+            "user_email": user.email if user else "",
+            "vehicle_id": s.vehicle_id,
+            "vehicle_number": vehicle.vehicle_number if vehicle else "Unknown",
+            "vehicle_type": vehicle.vehicle_type.value if vehicle else "OTHER",
+            "vehicle_color": vehicle.vehicle_color if vehicle else "Unknown",
+            "is_vehicle_verified": vehicle.is_verified if vehicle else False,
+            "status": s.status,
+            "started_at": s.started_at,
+            "ended_at": s.ended_at,
+            "expires_at": s.expires_at,
+            "created_at": s.created_at,
+            "latest_latitude": latest_loc.latitude if latest_loc else None,
+            "latest_longitude": latest_loc.longitude if latest_loc else None,
+            "latest_accuracy": latest_loc.accuracy if latest_loc else None,
+            "latest_recorded_at": latest_loc.recorded_at if latest_loc else None,
+            "is_location_stale": is_location_stale,
+            "resolved_by_admin_id": s.resolved_by_admin_id,
+            "admin_notes": s.admin_notes,
+        })
+
+    return results
+
+
+def get_emergency_locations(
+    db: Session, session_id: int, current_user: User
+) -> list[LocationUpdate]:
+    """
+    Returns full location history trail for an emergency session.
+    """
+    sess = _get_session_or_404(db, session_id)
+    _assert_ownership(sess, current_user, action="view_locations")
+
+    return (
+        db.query(LocationUpdate)
+        .filter(LocationUpdate.session_id == session_id)
+        .order_by(LocationUpdate.id.asc())
+        .all()
+    )
+

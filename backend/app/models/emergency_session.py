@@ -20,7 +20,7 @@ Security:
 
 import enum
 from datetime import datetime
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
     DateTime, Enum as SAEnum, ForeignKey, Integer, String
@@ -120,12 +120,33 @@ class EmergencySession(Base):
         comment="Row creation timestamp (UTC)",
     )
 
+    # Day 12: Admin dispatcher resolution tracking
+    resolved_by_admin_id: Mapped[Optional[int]] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="FK → users.id — admin who resolved this session (null if user-ended or not ended)",
+    )
+
+    admin_notes: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Dispatcher notes recorded when the session was ended by an admin",
+    )
+
     # -------------------------------------------------------------------------
     # Relationships
     # -------------------------------------------------------------------------
     user: Mapped["User"] = relationship(
         "User",
+        foreign_keys=[user_id],
         back_populates="emergency_sessions",
+    )
+
+    resolved_by_admin: Mapped[Optional["User"]] = relationship(
+        "User",
+        foreign_keys=[resolved_by_admin_id],
     )
 
     vehicle: Mapped["Vehicle"] = relationship(

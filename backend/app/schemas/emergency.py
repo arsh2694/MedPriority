@@ -47,6 +47,8 @@ class EmergencySessionResponse(BaseModel):
     ended_at: datetime | None
     expires_at: datetime
     created_at: datetime
+    resolved_by_admin_id: int | None = None
+    admin_notes: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -76,3 +78,36 @@ class EmergencyHistoryResponse(BaseModel):
     status: str = "success"
     count: int
     data: list[EmergencySessionResponse]
+
+
+class AdminEmergencySessionDetail(BaseModel):
+    id: int
+    user_id: int
+    user_name: str
+    user_email: str
+    vehicle_id: int
+    vehicle_number: str
+    vehicle_type: str
+    vehicle_color: str
+    is_vehicle_verified: bool
+    status: EmergencyStatus
+    started_at: datetime
+    ended_at: datetime | None
+    expires_at: datetime
+    created_at: datetime
+    latest_latitude: float | None = None
+    latest_longitude: float | None = None
+    latest_accuracy: float | None = None
+    latest_recorded_at: datetime | None = None
+    is_location_stale: bool = True  # True when no GPS or GPS is older than 2 min
+    resolved_by_admin_id: int | None = None
+    admin_notes: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminEmergencyListResponse(BaseModel):
+    status: str = "success"
+    count: int
+    data: list[AdminEmergencySessionDetail]
+

@@ -17,6 +17,7 @@ services:
     image: mysql:8.0
     container_name: medpriority_mysql
     restart: unless-stopped
+    command: --skip-name-resolve
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: medpriority

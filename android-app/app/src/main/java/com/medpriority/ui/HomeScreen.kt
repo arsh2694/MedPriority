@@ -35,6 +35,7 @@ fun HomeScreen(
     onNavigateToVehicles: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToEmergency: (emergencyId: Int) -> Unit,
+    onNavigateToAdmin: () -> Unit,
     onLogout: () -> Unit
 ) {
     val context = LocalContext.current
@@ -42,6 +43,7 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
 
     var userName by remember { mutableStateOf<String?>("User") }
+    var userRole by remember { mutableStateOf<String?>("USER") }
     var vehicles by remember { mutableStateOf<List<VehicleDto>>(emptyList()) }
     var activeEmergency by remember { mutableStateOf<EmergencySessionDto?>(null) }
     var emergencyHistory by remember { mutableStateOf<List<EmergencySessionDto>>(emptyList()) }
@@ -62,6 +64,7 @@ fun HomeScreen(
                 val userRes = apiService.getCurrentUser()
                 if (userRes.isSuccessful && userRes.body() != null) {
                     userName = userRes.body()!!.name
+                    userRole = userRes.body()!!.role
                 } else if (userRes.code() == 401) {
                     onLogout()
                     return@launch
@@ -157,7 +160,9 @@ fun HomeScreen(
                     Image(
                         painter = painterResource(id = R.drawable.medpriority_logo),
                         contentDescription = "MedPriority Logo",
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(percent = 22)),
                         contentScale = ContentScale.Fit
                     )
                     Column {
@@ -270,6 +275,67 @@ fun HomeScreen(
                     isLoading = isStartingSOS,
                     onClick = { handleSOSClick() }
                 )
+            }
+
+            if (userRole == "ADMIN") {
+                Spacer(modifier = Modifier.height(20.dp))
+
+                MedPriorityCard(
+                    backgroundColor = androidx.compose.ui.graphics.Color(0xFFF0FDF4),
+                    borderColor = androidx.compose.ui.graphics.Color(0xFFBBF7D0)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(androidx.compose.ui.graphics.Color(0xFF16A34A), androidx.compose.foundation.shape.CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "DISPATCHER CONSOLE",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = androidx.compose.ui.graphics.Color(0xFF16A34A)
+                                )
+                            }
+                            Text(
+                                text = "Emergency Operations",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            Text(
+                                text = "Live telemetry, active SOS monitor & vehicle queue",
+                                fontSize = 12.sp,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = onNavigateToAdmin,
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF16A34A)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Open Dispatcher Console →",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = androidx.compose.ui.graphics.Color.White
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))

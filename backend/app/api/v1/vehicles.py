@@ -126,3 +126,21 @@ def delete_vehicle(
     - Returns 204 No Content on success.
     """
     vehicle_service.delete_vehicle(db, vehicle_id, current_user)
+
+
+@router.put(
+    "/{vehicle_id}/verify",
+    response_model=VehicleResponse,
+    summary="Verify a vehicle (Admin)",
+)
+def verify_vehicle(
+    vehicle_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_admin_user),
+):
+    """
+    Verifies a citizen's registered vehicle.
+    Requires ADMIN role.
+    """
+    return vehicle_service.verify_vehicle(db, vehicle_id, current_user)
+

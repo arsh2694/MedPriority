@@ -90,3 +90,25 @@ async def health_check():
         "database": db_status,
         "version": settings.APP_VERSION,
     }
+
+
+# -----------------------------------------------------------------------------
+# Web Admin & Dispatcher Dashboard
+# -----------------------------------------------------------------------------
+from fastapi.responses import HTMLResponse, FileResponse
+import os
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Admin Dashboard"])
+@app.get("/admin", response_class=HTMLResponse, tags=["Admin Dashboard"])
+async def get_dashboard():
+    """
+    Renders the live dispatcher operations dashboard with interactive Leaflet map,
+    real-time emergency telemetry, and fleet vehicle management.
+    """
+    dashboard_file = os.path.join(_STATIC_DIR, "dashboard.html")
+    if os.path.exists(dashboard_file):
+        return FileResponse(dashboard_file, media_type="text/html")
+    return HTMLResponse("<h1>MedPriority Dashboard file not found</h1>", status_code=404)
+

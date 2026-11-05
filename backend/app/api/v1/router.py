@@ -15,7 +15,7 @@ Add new route modules here as they are built:
 """
 
 from fastapi import APIRouter
-from app.api.v1 import users, auth, vehicles, emergencies
+from app.api.v1 import users, auth, vehicles, emergencies, admin
 
 api_router = APIRouter()
 
@@ -24,6 +24,7 @@ api_router.include_router(auth.router)
 api_router.include_router(users.router)
 api_router.include_router(vehicles.router)
 api_router.include_router(emergencies.router)
+api_router.include_router(admin.router)
 
 # Future routers added here:
 # api_router.include_router(location.router)

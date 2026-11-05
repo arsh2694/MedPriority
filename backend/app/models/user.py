@@ -111,6 +111,7 @@ class User(Base):
 
     emergency_sessions: Mapped[List["EmergencySession"]] = relationship(
         "EmergencySession",
+        foreign_keys="[EmergencySession.user_id]",
         back_populates="user",
         cascade="all, delete-orphan",
     )

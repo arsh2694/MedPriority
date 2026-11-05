@@ -27,6 +27,8 @@ from app.schemas.emergency import (
     EmergencyEndedResponse,
     EmergencyActiveResponse,
     EmergencyHistoryResponse,
+    AdminEmergencyListResponse,
+    AdminEmergencySessionDetail,
 )
 from app.services import emergency_service
 from app.api import deps
@@ -81,6 +83,30 @@ def get_active_emergency(
     sess = emergency_service.get_active_emergency(db, current_user)
     return EmergencyActiveResponse(
         data=EmergencySessionResponse.model_validate(sess) if sess else None
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/emergencies/admin/active  — Admin/Dispatcher live monitoring
+# ---------------------------------------------------------------------------
+@router.get(
+    "/admin/active",
+    response_model=AdminEmergencyListResponse,
+    summary="Get all active emergency sessions (Admin)",
+)
+def get_all_active_emergencies(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_admin_user),
+):
+    """
+    Returns ALL currently active emergency sessions across all users.
+    Includes driver info, vehicle details, and latest GPS telemetry.
+    Requires ADMIN role.
+    """
+    items = emergency_service.get_admin_active_emergencies(db)
+    return AdminEmergencyListResponse(
+        count=len(items),
+        data=[AdminEmergencySessionDetail(**item) for item in items],
     )
 
 
@@ -177,3 +203,24 @@ def record_emergency_location(
     - 409 if emergency is not ACTIVE.
     """
     return emergency_service.record_location(db, session_id, current_user, data)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/emergencies/{id}/locations
+# ---------------------------------------------------------------------------
+@router.get(
+    "/{session_id}/locations",
+    response_model=list[LocationResponse],
+    summary="Get GPS location history for an emergency session",
+)
+def get_emergency_locations(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_active_user),
+):
+    """
+    Returns GPS coordinates history for mapping vehicle route.
+    """
+    locs = emergency_service.get_emergency_locations(db, session_id, current_user)
+    return [LocationResponse.model_validate(l) for l in locs]
+
